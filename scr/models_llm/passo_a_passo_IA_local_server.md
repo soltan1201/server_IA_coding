@@ -159,7 +159,9 @@ services:
     volumes:
       - ./open-webui:/app/backend/data
     environment:
-      - OLLAMA_BASE_URL=http://192.168.0.177:11434  # ← Altere para IP do seu servidor
+      - 'OLLAMA_BASE_URL=http://host.docker.internal:11434'  # ← Altere
+      - 'WEBUI_SECRET_KEY=abcde'
+       para IP do seu servidor
       - ENABLE_RAG=false
       - ENABLE_WEB_SEARCH=false
       - ENABLE_COMMUNITY_SHARING=false
@@ -235,45 +237,7 @@ Usar os Modelos
         codegemma:7b → Uso geral balanceado
     4. Comece a conversar! 🎉
 
- Dica: para garantir que o Open WebUI funcione de primeira:
-    1. A Variável de Ambiente WEBUI_SECRET_KEY
-    O Open WebUI exige uma chave secreta para criptografar os tokens de login no banco de dados. Se você não definir uma no docker-compose.yml
-    YAML
-      environment:
-      - 'WEBUI_SECRET_KEY=sua_chave_secreta_aqui_muito_longa' # Adicione isso
-      - 'OLLAMA_BASE_URL=http://host.docker.internal:11434'
-    2. Permissões de Escrita no Volume (Crucial no Arch)
-    bash
-    # Se o Open WebUI der erro de banco de dados, force a permissão:
-    sudo chown -R 1000:1000 ~/openwebui/open-webui
-    sudo chmod -R 755 ~/openwebui/open-webui
-    - fin do bash
-    3. DNS e comunicação via host.docker.internal
-    Se o IP do servidor mudar via DHCP, o WebUI para de funcionar.
-    Recomendação de ajuste no passo 4:
-    No arquivo docker-compose.yml, altere:
-    OLLAMA_BASE_URL=http://host.docker.internal:11434
-    Isso garante que, não importa o IP da sua rede WiFi/Ethernet, o Open WebUI sempre achará o Ollama rodando no Arch.
-    4. Ordem de Inicialização (O "Race Condition")
-    bash
-    # Comando de verificação rápida
-    until curl -s http://localhost:11434/api/tags > /dev/null; do
-      echo "Aguardando Ollama iniciar..."
-      sleep 2
-    done
-    docker-compose up -d
-    - fin do bash
-    
-
-
-
-
-
-
-
-
-
-
+ Dica: O Open WebUI funciona as vezes de primeira, mas outras vezes acontecem erros, se ser assim sega os passos do guia_erros_openWebUI.md
 
 
 
@@ -313,7 +277,7 @@ json
     "apiBase": "http://<IP-DO-SERVIDOR>:11434"
   }
 }
-no meu caso o <IP-DO-SERVIDOR> = 192.168.0.177
+exemplo de IP: <IP-DO-SERVIDOR> = 192.168.0.177
 
 Como Usar
 Atalho                 Função                     Exemplo
