@@ -252,6 +252,12 @@ json
 {
   "models": [
     {
+      "title": "🏆 Qwen2.5 14B (Local)",
+      "provider": "ollama",
+      "model":"qwen2.5-coder:14b",
+      "apiBase": "http://<IP-DO-SERVIDOR>:11434"
+    },
+    {
       "title": "🏆 Qwen3.5 9B (Local)",
       "provider": "ollama",
       "model": "qwen3.5:9b",
