@@ -7,6 +7,7 @@
 ## 📋 Índice
 
 - [✨ Funcionalidades](#-funcionalidades)
+- [🏗️ Configuração Inicial do Servidor Linux](#-configuração-inicial-do-servidor-linux)
 - [🎯 Pré-requisitos](#-pré-requisitos)
 - [🚀 Instalação Rápida](#-instalação-rápida)
 - [🔧 Instalação Detalhada](#-instalação-detalhada)
@@ -17,6 +18,7 @@
 - [🛠️ Troubleshooting](#-troubleshooting)
 - [📊 Monitoramento](#-monitoramento)
 - [🔒 Segurança](#-segurança)
+- [📁 Compartilhamento de Arquivos](#-compartilhamento-de-arquivos)
 - [🤝 Contribuindo](#-contribuindo)
 - [📚 Próximas Tarefas Pendentes](#-próximas-tarefas-pendentes)
 
@@ -35,6 +37,298 @@
 - 🧩 Integração nativa com VS Code via Continue.dev
 - 🔄 Troca dinâmica de modelos sem reiniciar servidor
 - 📦 Dockerizado para fácil deploy e manutenção
+
+---
+
+## 🏗️ Configuração Inicial do Servidor Linux
+
+> **Nota:** Esta seção assume que você já instalou o Arch Linux (via archinstall ou instalação manual).
+
+### 1. Instalação Base e Ambiente Arch
+
+```bash
+# Atualizar o sistema
+sudo pacman -Syu
+
+# Instalar utilitários essenciais
+sudo pacman -S base-devel linux-headers git vim openssh wget curl
+
+# Instalar ferramentas de gerenciamento de pacotes
+sudo pacman -S yay paru
+
+# Habilitar o SSH para gerenciamento remoto
+sudo systemctl enable --now sshd
+```
+
+**Verificação:**
+```bash
+# Confirmar que o SSH está rodando
+systemctl status sshd
+
+# Testar conexão local
+ssh localhost
+```
+
+### 2. Configuração da GPU NVIDIA (CUDA & cuDNN)
+
+Para que o TensorFlow e o PyTorch utilizem o hardware, a ordem de instalação importa.
+
+**Importante:** Como você tem uma RTX 3070 LHR e está no kernel LTS, o pacote genérico `nvidia` não vai funcionar. Vamos resolver isso com o método mais robusto para o Arch Linux, que é o DKMS. O DKMS garante que, sempre que o kernel atualizar, o driver da NVIDIA seja recompilado automaticamente.
+
+#### Instalar os Drivers NVIDIA
+
+```bash
+# Instalar headers do kernel LTS e drivers
+sudo pacman -S linux-lts-headers nvidia-dkms nvidia-utils nvidia-settings
+
+# Instalar toolkit de computação (opcional, para desenvolvimento)
+sudo pacman -S cuda cudnn
+```
+
+#### Configurar o Bootloader para NVIDIA
+
+```bash
+# Editar a configuração do bootloader
+sudo nano /boot/loader/entries/2026-02-04_14-38-23_linux-lts.conf
+```
+
+**Na linha que começa com `options`, vá até o final e adicione:**
+```
+nvidia-drm.modeset=1
+```
+
+**Resultado esperado:**
+```
+options root=UUID=xxxx-xxxx ro quiet nvidia-drm.modeset=1
+```
+
+#### Blacklistar o Nouveau (Driver Open Source)
+
+```bash
+# Criar arquivo de blacklist
+sudo nano /etc/modprobe.d/nouveau_blacklist.conf
+```
+
+**Adicionar as linhas (mesmo arquivo vazio):**
+```
+blacklist nouveau
+options nouveau modeset=0
+```
+
+**Verificar se o nouveau foi blacklistado:**
+```bash
+lsmod | grep nouveau
+# Saída esperada: (nenhum resultado)
+```
+
+#### Verificar Detecção da GPU
+
+```bash
+# Listar dispositivos NVIDIA
+lspci | grep -i nvidia
+
+# Saída esperada:
+# 01:00.0 VGA compatible controller: NVIDIA Corporation Device 1fb90 (rev a1)
+```
+
+#### Reiniciar o Servidor
+
+```bash
+# Reiniciar para aplicar as configurações
+sudo reboot
+```
+
+#### Verificação Pós-Reinício
+
+```bash
+# Verificar se a GPU está sendo detectada
+nvidia-smi
+
+# Saída esperada:
+# +-----------------------------------------------------------------------------+
+# | NVIDIA-SMI 535.104.05   Driver Version: 535.104.05   CUDA Version: 12.2   |
+# |-----------------------------------------+----------------------+----------------------+
+# | GPU  Name        Persistence-M   Bus-Id   Disp.A   Volatile Uncorr. ECC  |
+# | 0  NVIDIA GeForce RTX 3070 LHR       On   000001:00:01.0     On          |
+# |-----------------------------------------+----------------------+----------------------+
+# |                                                                              
+# | Processes:                                                                  |
+# |  GPU   GI   CI        PID   Type   Process name                  GPU Memory |
+# |        ID   ID        PID   CPU   Name                             Usage      |
+# |=============================================================================|
+# |  0      N/A  N/A            Process name...                       N/A   |
+# +-----------------------------------------------------------------------------+
+```
+
+**Monitorar em tempo real:**
+```bash
+watch -n 2 nvidia-smi
+```
+
+**Ou comando único:**
+```bash
+nvidia-smi --query-gpu=memory.used,memory.total,utilization.gpu --format=csv
+```
+
+**Saída exemplo:**
+```
+memory.used [MiB], memory.total [MiB], utilization.gpu [%]
+6144, 12288, 45%
+```
+
+### 3. Ambiente de Processamento (Python & Frameworks)
+
+É altamente recomendável usar ambientes virtuais ou Docker para evitar quebrar as bibliotecas do sistema.
+
+#### Opção A: Ambientes Virtuais (Conda/Mamba)
+
+**Instalar o Miniforge (melhor que o Anaconda para Arch):**
+```bash
+yay -S miniforge-bin
+```
+
+**Criar um ambiente dedicado:**
+```bash
+conda create -n ml_env python=3.10
+conda activate ml_env
+```
+
+**Instalar os frameworks:**
+```bash
+# TensorFlow com suporte a CUDA
+pip install tensorflow[and-cuda]
+
+# Verificar detecção de GPU
+python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
+
+# PyTorch completo
+pip install torch torchvision torchaudio
+```
+
+**Verificar PyTorch com GPU:**
+```bash
+python3 -c "import torch; print(torch.cuda.is_available())"
+# Saída esperada: True
+```
+
+#### Opção B: Docker (Recomendado para servidores)
+
+O Docker isola as versões de bibliotecas e facilita a portabilidade.
+
+**Instalar o Docker e o suporte NVIDIA:**
+```bash
+sudo pacman -S docker nvidia-container-toolkit
+```
+
+**Habilitar o serviço Docker:**
+```bash
+sudo systemctl enable --now docker
+```
+
+**Adicionar seu usuário ao grupo docker:**
+```bash
+sudo usermod -aG docker $USER
+# ⚠️ Faça logout/login para aplicar mudanças de grupo
+```
+
+**Configurar runtime da NVIDIA no Docker:**
+```bash
+# Verificar se o runtime está disponível
+docker info | grep -i runtime
+
+# Deve mostrar:
+# Runtime: runc
+# Storage Driver: overlay2
+# NVIDIA: true
+```
+
+**Testar execução de container com GPU:**
+```bash
+docker run --gpus all --rm nvidia/cuda:12.1.0-base-ubuntu20.04 nvidia-smi
+```
+
+### 4. Servidor Samba (Compartilhamento de Arquivos)
+
+Para que outros PCs (Windows/Linux) na rede local enviem datasets para o servidor.
+
+#### Instalar Samba
+
+```bash
+sudo pacman -S samba
+```
+
+#### Configurar o Samba
+
+```bash
+sudo nano /etc/samba/smb.conf
+```
+
+**Adicionar ao final do arquivo:**
+```ini
+[datasets]
+    path = /data/datasets
+    available = yes
+    valid users = @wheel
+    read only = no
+    create mask = 0755
+    directory mask = 0755
+    force group = wheel
+    writable = yes
+
+[models]
+    path = /var/lib/ollama
+    available = yes
+    valid users = @wheel
+    read only = yes
+    create mask = 0644
+    directory mask = 0755
+
+[backup]
+    path = /data/backup
+    available = yes
+    valid users = @wheel
+    read only = no
+    create mask = 0755
+    directory mask = 0755
+    writable = yes
+```
+
+#### Criar Diretórios Compartilhados
+
+```bash
+# Criar diretórios de compartilhamento
+sudo mkdir -p /data/datasets /data/backup
+
+# Definir permissões
+sudo chown -R root:wheel /data
+sudo chmod -R 755 /data
+```
+
+#### Iniciar o Samba
+
+```bash
+# Habilitar e iniciar o serviço
+sudo systemctl enable --now smb
+sudo systemctl enable --now nmb
+
+# Verificar status
+systemctl status smb
+systemctl status nmb
+```
+
+#### Testar Conexão de Outro PC
+
+**No Windows:**
+```
+\\192.168.0.177\datasets
+\\192.168.0.177\models
+\\192.168.0.177\backup
+```
+
+**No Linux:**
+```bash
+mount -t cifs //192.168.0.177/datasets /mnt/datasets -o username=usuario,password=senha
+```
 
 ---
 
@@ -560,6 +854,82 @@ tar -czf webui-backup-$(date +%Y%m%d).tar.gz ~/openwebui/open-webui
 # Restaurar
 sudo tar -xzf ollama-backup-*.tar.gz -C /
 tar -xzf webui-backup-*.tar.gz -C ~/
+```
+
+---
+
+## 📁 Compartilhamento de Arquivos
+
+### Configurar Samba para Compartilhamento de Rede
+
+```bash
+# Instalar Samba
+sudo pacman -S samba
+
+# Configurar arquivo smb.conf
+sudo nano /etc/samba/smb.conf
+```
+
+**Adicionar ao final do arquivo:**
+
+```ini
+[datasets]
+    path = /data/datasets
+    available = yes
+    valid users = @wheel
+    read only = no
+    create mask = 0755
+    directory mask = 0755
+    force group = wheel
+    writable = yes
+
+[models]
+    path = /var/lib/ollama
+    available = yes
+    valid users = @wheel
+    read only = yes
+    create mask = 0644
+    directory mask = 0755
+
+[backup]
+    path = /data/backup
+    available = yes
+    valid users = @wheel
+    read only = no
+    create mask = 0755
+    directory mask = 0755
+    writable = yes
+```
+
+```bash
+# Criar diretórios de compartilhamento
+sudo mkdir -p /data/datasets /data/backup
+
+# Definir permissões
+sudo chown -R root:wheel /data
+sudo chmod -R 755 /data
+
+# Iniciar Samba
+sudo systemctl enable --now smb
+sudo systemctl enable --now nmb
+
+# Verificar status
+systemctl status smb
+systemctl status nmb
+```
+
+### Acessar de Outros PCs
+
+**No Windows:**
+```
+\\192.168.0.177\datasets
+\\192.168.0.177\models
+\\192.168.0.177\backup
+```
+
+**No Linux:**
+```bash
+mount -t cifs //192.168.0.177/datasets /mnt/datasets -o username=usuario,password=senha
 ```
 
 ---
